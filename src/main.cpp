@@ -392,36 +392,66 @@ void openSong(const char* source) {
   audio.connecttohost(source); // Opens the source, similar to play
 }
 
+bool hasExtension(const char* filename, const char* ext) {
+    size_t len = strlen(filename);
+    size_t extLen = strlen(ext);
+    if (len < extLen) return false;
+    return strcasecmp(filename + len - extLen, ext) == 0;
+}
+
 void listFiles(fs::FS &fs, const char *dirname, uint8_t levels) {
-  Serial.printf("Listing directory: %s\n", dirname);
+    Serial.printf("Listing directory: %s\n", dirname);
 
-  File root = fs.open(dirname);
-  if (!root) {
-    Serial.println("Failed to open directory");
-    return;
-  }
-  if (!root.isDirectory()) {
-    Serial.println("Not a directory");
-    return;
-  }
-
-  File file = root.openNextFile();
-  while (file && fileCount < MAX_FILES) {
-    if (file.isDirectory()) {
-      Serial.print("DIR : ");
-      Serial.println(file.name());
-      if (levels) {
-        listFiles(fs, file.name(), levels - 1);
-      }
-    } else {
-      Serial.print("FILE: ");
-      Serial.print(file.name());
-      audioFiles[fileCount] = "/"+String(file.name());
-      fileCount++;
-      
+    File root = fs.open(dirname);
+    if (!root) {
+        Serial.println("Failed to open directory");
+        return;
     }
-    file = root.openNextFile();
-  }
+    if (!root.isDirectory()) {
+        Serial.println("Not a directory");
+        root.close();
+        return;
+    }
+
+    File file = root.openNextFile();
+    while (file && fileCount < MAX_FILES) {
+        if (file.isDirectory()) {
+            const char* name = file.name();
+            Serial.print("DIR : ");
+            Serial.println(name);
+
+            if (strcmp(name, "System Volume Information") == 0 ||
+                strcmp(name, "LOST.DIR") == 0 ||
+                strcmp(name, "lost+found") == 0) {
+                file.close();
+                file = root.openNextFile();
+                continue;
+            }
+
+            if (levels > 0) {
+                String fullPath = String(dirname);
+                if (!fullPath.endsWith("/")) fullPath += "/";
+                fullPath += name;
+                file.close();
+                listFiles(fs, fullPath.c_str(), levels - 1);
+            }
+        } else {
+            const char* name = file.name();
+            if (hasExtension(name, ".mp3")) {
+                Serial.print("FILE: ");
+                Serial.println(name);
+
+                String fullPath = String(dirname);
+                if (!fullPath.endsWith("/")) fullPath += "/";
+                fullPath += name;
+                audioFiles[fileCount] = fullPath;
+                fileCount++;
+            }
+        }
+        file.close();
+        file = root.openNextFile();
+    }
+    root.close();
 }
 
 void audio_eof_mp3(const char *info) {
